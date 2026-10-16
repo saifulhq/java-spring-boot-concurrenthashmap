@@ -32,7 +32,7 @@ sequenceDiagram
 
     Note over Runner, Map: Langkah 1: Registrasi 5 Session Berbeda
     loop 5 Kali Registrasi
-        Runner->>App: POST /session/register (CLIENT-1 s.d CLIENT-5)
+        Runner->>App: POST /session/register (USER-1 s.d USER-5)
         App->>Map: put(sha2Hash, sessionData)
         App-->>Runner: 201 Created (Koleksi 5 SHA-256 Hashes)
     end
@@ -41,11 +41,11 @@ sequenceDiagram
     par 10 Virtual Threads Paralel (Merotasi 5 Hash)
         Runner->>App: GET /customer/profile [Header: x-session: Hash-1]
         App->>Scope: Inisialisasi Instance RequestScope Baru (UUID-1)
-        App-->>Runner: 200 OK { clientId: "CLIENT-1", requestId: "UUID-1" }
+        App-->>Runner: 200 OK { userId: "USER-1", leadId: "LEAD-1", requestId: "UUID-1" }
     and
         Runner->>App: GET /customer/profile [Header: x-session: Hash-2]
         App->>Scope: Inisialisasi Instance RequestScope Baru (UUID-2)
-        App-->>Runner: 200 OK { clientId: "CLIENT-2", requestId: "UUID-2" }
+        App-->>Runner: 200 OK { userId: "USER-2", leadId: "LEAD-2", requestId: "UUID-2" }
     and
         Runner->>App: ... (Lanjut s.d 10 Request Konkuren)
     end
@@ -70,7 +70,7 @@ Buka browser di `http://localhost:8080/swagger-ui.html`. Pastikan halaman terbuk
 ```bash
 curl -i -X POST http://localhost:8080/session/register \
   -H "Content-Type: application/json" \
-  -d '{"clientId":"CL-001","agentId":"AG-99","pov":"CUSTOMER","source":"MOBILE_APP"}'
+  -d '{"userId":"USR-001","leadId":"LEAD-99","source":"MOBILE_APP"}'
 ```
 Simpan hash yang diperoleh, contoh: `a1b2c3d4...`
 

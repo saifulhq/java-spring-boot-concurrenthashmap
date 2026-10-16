@@ -29,9 +29,8 @@ Content-Type: application/json
 ### Request Body
 ```json
 {
-  "clientId": "CL-001",
-  "agentId": "AG-99",
-  "pov": "CUSTOMER",
+  "userId": "USR-001",
+  "leadId": "LEAD-99",
   "source": "MOBILE_APP"
 }
 ```
@@ -61,9 +60,8 @@ Mengecek status dan melihat data session langsung melalui path parameter.
   "sessionHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "active": true,
   "payload": {
-    "clientId": "CL-001",
-    "agentId": "AG-99",
-    "pov": "CUSTOMER",
+    "userId": "USR-001",
+    "leadId": "LEAD-99",
     "source": "MOBILE_APP"
   },
   "createdAt": "2026-10-16T13:30:00Z",
@@ -95,9 +93,8 @@ x-session: <sha256-hash>
 ### Response (200 OK)
 ```json
 {
-  "clientId": "CL-001",
-  "agentId": "AG-99",
-  "pov": "CUSTOMER",
+  "userId": "USR-001",
+  "leadId": "LEAD-99",
   "source": "MOBILE_APP",
   "accountTier": "PREMIUM",
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
@@ -119,10 +116,11 @@ x-session: <sha256-hash>
 ### Response (200 OK)
 ```json
 {
-  "clientId": "CL-001",
+  "userId": "USR-001",
+  "leadId": "LEAD-99",
+  "source": "MOBILE_APP",
   "totalReviews": 12,
   "averageRating": 4.8,
-  "source": "MOBILE_APP",
   "requestId": "550e8400-e29b-41d4-a716-446655440001",
   "scopeInstanceHashCode": 98765432,
   "threadName": "http-nio-8080-exec-2"

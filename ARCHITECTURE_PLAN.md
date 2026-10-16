@@ -10,7 +10,7 @@ Proyek ini adalah backend service berbasis **Java 21**, **Spring Boot 3+**, **Ma
 
 ### Karakteristik Utama:
 - **Tahan Konkurensi Tinggi**: Menggunakan `ConcurrentHashMap` dengan operasi thread-safe untuk menangani banyak request registrasi dan pembacaan secara simultan.
-- **SHA-256 Session Key Unik**: Formula hash dihitung dari `{clientId}:{agentId}:{pov}:{source};mysession;{timestamp-create};{timestamp-expired}` sehingga pemanggilan berulang dengan data yang sama tetap menghasilkan hash unik dan tidak saling menimpa.
+- **SHA-256 Session Key Unik**: Formula hash dihitung dari `{userId}:{leadId}:{source};{salt};{timestamp-create};{timestamp-expired}` sehingga pemanggilan berulang dengan data yang sama tetap menghasilkan hash unik dan tidak saling menimpa.
 - **TTL Session 1 Jam**: Setiap session memiliki masa aktif 1 jam sejak dibuat.
 - **Pembersihan Otomatis Setiap 3 Menit**: Spring `@Scheduled` background job secara periodik membuang key session yang telah expired.
 - **Validasi Header `x-session` Menggunakan HTTP 400 Bad Request**:
@@ -37,7 +37,7 @@ sequenceDiagram
     participant Controller as CustomerController
 
     Note over Client, Storage: 1. Registrasi Session (Bebas Header)
-    Client->>Storage: POST /session/register { clientId, agentId, pov, source }
+    Client->>Storage: POST /session/register { userId, leadId, source }
     Note right of Storage: Hash SHA-256 dari:<br/>payload + ;mysession;create;expire<br/>Set TTL = now + 1 Jam<br/>Simpan di ConcurrentHashMap
     Storage-->>Client: 201 Created { sessionHash, message, expiresAt }
 
@@ -178,15 +178,15 @@ File pengujian: `src/test/java/com/example/sessionmap/SessionRequestScopeIntegra
 
 Tujuan pengujian:
 1. Mendaftarkan **5 session berbeda** (`POST /session/register`) dengan data unik:
-   - Session 1: `{ clientId: "CLIENT-1", agentId: "AGENT-A", pov: "POV-1", source: "WEB" }`
-   - Session 2: `{ clientId: "CLIENT-2", agentId: "AGENT-B", pov: "POV-2", source: "APP" }`
-   - Session 3: `{ clientId: "CLIENT-3", agentId: "AGENT-C", pov: "POV-3", source: "POS" }`
-   - Session 4: `{ clientId: "CLIENT-4", agentId: "AGENT-D", pov: "POV-4", source: "CHAT" }`
-   - Session 5: `{ clientId: "CLIENT-5", agentId: "AGENT-E", pov: "POV-5", source: "BOT" }`
+   - Session 1: `{ userId: "USER-1", leadId: "LEAD-1", source: "WEB" }`
+   - Session 2: `{ userId: "USER-2", leadId: "LEAD-2", source: "APP" }`
+   - Session 3: `{ userId: "USER-3", leadId: "LEAD-3", source: "POS" }`
+   - Session 4: `{ userId: "USER-4", leadId: "LEAD-4", source: "CHAT" }`
+   - Session 5: `{ userId: "USER-5", leadId: "LEAD-5", source: "BOT" }`
 2. Masing-masing mendapatkan **SHA-256 session hash yang berbeda**.
 3. Menjalankan **10 request simultan** (menggunakan Java 21 Virtual Threads / ExecutorService) memanggil endpoint terproteksi `GET /customer/profile` secara bergantian memakai 5 hash tersebut (setiap session dipanggil minimal 2x).
 4. Verifikasi ketat (*Assertions*):
-   - **Kesesuaian Data**: Request dengan hash session `N` **harus selalu** mengembalikan `clientId` milik session `N`, tidak pernah tertukar.
+   - **Kesesuaian Data**: Request dengan hash session `N` **harus selalu** mengembalikan `userId` & `leadId` milik session `N`, tidak pernah tertukar.
    - **Isolasi `@RequestScope`**: Setiap request dari 10 request tersebut menghasilkan `requestId` (UUID) yang unik. Tidak ada 2 request yang berbagi instance `@RequestScope` yang sama.
    - **Status Respon**: Seluruh 10 request mengembalikan status **HTTP 200 OK**.
    - **Simulasi Error 400**: Menambahkan verifikasi jika request ke-11 dikirim tanpa header atau dengan hash acak, respon yang kembali tepat **HTTP 400 Bad Request**.
@@ -204,9 +204,8 @@ class SessionRequestScopeIntegrationTest {
         List<String> hashes = new ArrayList<>();
         for (int i = 1; i <= 5; i++) {
             RegisterSessionRequest req = RegisterSessionRequest.builder()
-                .clientId("CLIENT-" + i)
-                .agentId("AGENT-" + i)
-                .pov("POV-" + i)
+                .userId("USER-" + i)
+                .leadId("LEAD-" + i)
                 .source("SOURCE-" + i)
                 .build();
             ResponseEntity<RegisterSessionResponse> resp = restTemplate.postForEntity(
@@ -225,7 +224,7 @@ class SessionRequestScopeIntegrationTest {
         for (int i = 0; i < totalRequests; i++) {
             final int sessionIndex = i % 5;
             final String hash = hashes.get(sessionIndex);
-            final String expectedClient = "CLIENT-" + (sessionIndex + 1);
+            final String expectedUser = "USER-" + (sessionIndex + 1);
 
             executor.submit(() -> {
                 try {
@@ -244,7 +243,7 @@ class SessionRequestScopeIntegrationTest {
                     CustomerProfileResponse profile = response.getBody();
                     assertThat(profile).isNotNull();
                     // Pastikan data payload session tidak tertukar
-                    assertThat(profile.getClientId()).isEqualTo(expectedClient);
+                    assertThat(profile.getUserId()).isEqualTo(expectedUser);
                     // Pastikan requestId per request unik (bukti request scope)
                     uniqueRequestIds.add(profile.getRequestId());
                     responses.add(profile);

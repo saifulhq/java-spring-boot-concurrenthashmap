@@ -8,7 +8,7 @@
 
 ## 1. Konteks Masalah
 Aplikasi membutuhkan mekanisme pengelolaan session dengan performa tinggi tanpa menggunakan database eksternal (seperti PostgreSQL atau Redis). Sistem harus mampu menampung banyak request registrasi session secara bersamaan, menghasilkan token session berbasis hash SHA-2
-dari payload `{ clientId, agentId, pov, source }`, dan menjamin setiap request bisnis berikutnya memiliki isolasi state session yang aman secara thread-safe.
+dari payload `{ userId, leadId, source }`, dan menjamin setiap request bisnis berikutnya memiliki isolasi state session yang aman secara thread-safe.
 
 ---
 
@@ -23,7 +23,7 @@ dari payload `{ clientId, agentId, pov, source }`, dan menjamin setiap request b
 
 ### 2.2 Penggunaan SHA-256 sebagai Session Key & Pencegahan Duplikasi
 - **Keputusan**: Hash SHA-2 (SHA-256) dikalkulasikan dari kombinasi payload registrasi ditambah salt dinamis berformat:
-  `{clientId}:{agentId}:{pov}:{source};{salt};{timestamp-create};{timestamp-expired}`
+  `{userId}:{leadId}:{source};{salt};{timestamp-create};{timestamp-expired}`
   di mana `{salt}` secara default bernilai `mysession` dan dapat dikonfigurasi secara dinamis melalui properti `session.salt` di `application.properties` (atau di-override via Azure Key Vault `SESSION_SALT`).
 - **Alasan**:
   - Menghasilkan string hex 64-karakter dengan entropi seragam sebagai key pada `ConcurrentHashMap`.

@@ -24,7 +24,7 @@ Untuk memastikan siapa pun yang melanjutkan atau memelihara proyek ini memahami 
 ## 🚀 Fitur Unggulan
 
 - **In-Memory Thread-Safe**: Menggunakan `ConcurrentHashMap` dengan operasi atomik yang mampu menampung ribuan request paralel tanpa *locking* global.
-- **SHA-256 Session Key**: Menghasilkan session hash deterministik dari payload `{ clientId, agentId, pov, source }`.
+- **SHA-256 Session Key**: Menghasilkan session hash deterministik dari payload `{ userId, leadId, source }`.
 - **TTL 1 Jam & Job Pembersihan 3 Menit**: Session otomatis kedaluwarsa setelah 1 jam dan dibersihkan setiap 180.000 ms via Spring `@Scheduled`.
 - **Validasi Header 400 Bad Request**: Menolak request tanpa header `x-session` atau hash expired dengan HTTP 400 (kode 401 dicadangkan untuk JWT).
 - **Isolasi `@RequestScope`**: Context request diisolasi per thread request HTTP secara independen.

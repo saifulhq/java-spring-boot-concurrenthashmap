@@ -94,18 +94,18 @@ Untuk mencegah terjadinya tabrakan (*collision*) atau penimpaan key session jika
 
 ### Formula Input String Mentah:
 ```
-{clientId}:{agentId}:{pov}:{source};{salt};{timestamp-create};{timestamp-expired}
+{userId}:{leadId}:{source};{salt};{timestamp-create};{timestamp-expired}
 ```
 
 ### Parameter:
-- `{clientId}`, `{agentId}`, `{pov}`, `{source}`: Nilai string dari request body registrasi.
+- `{userId}`, `{leadId}`, `{source}`: Nilai string dari request body registrasi.
 - `{salt}`: Identifier salt penanda internal session (dapat dikonfigurasi di `application.properties` via `session.salt=mysession`, default: `mysession`).
 - `{timestamp-create}`: Nilai epoch millis saat request registrasi diproses (`Instant.now().toEpochMilli()`).
 - `{timestamp-expired}`: Nilai epoch millis saat session kedaluwarsa (`expiresAt.toEpochMilli()`).
 
 ### Contoh Konkret:
 ```text
-CL-001:AG-99:CUSTOMER:MOBILE_APP;mysession;1773643627123;1773647227123
+USR-001:LEAD-99:MOBILE_APP;mysession;1773643627123;1773647227123
 ```
 
 ### Konfigurasi di `application.properties`:
