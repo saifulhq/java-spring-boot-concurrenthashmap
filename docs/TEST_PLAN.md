@@ -11,7 +11,7 @@ Dokumen ini mendefinisikan strategi dan skenario pengujian komprehensif, baik au
 | **Hashing SHA-256** | `SessionServiceTest` | Generate hash dari payload yang sama & payload berbeda | Hash konsisten deterministik, payload beda menghasilkan hash beda |
 | **In-Memory Store** | `InMemorySessionRepositoryTest` | Simpan, ambil, dan hitung active session | Data tersimpan aman di `ConcurrentHashMap` |
 | **Lazy TTL Expiration** | `InMemorySessionRepositoryTest` | Simpan session dengan TTL buatan (misal 50ms), tunggu 60ms lalu ambil | `findByHash` menghasilkan `Optional.empty()` & key otomatis terhapus dari map |
-| **3-Minute Cleanup Job** | `SessionCleanupJobTest` | Panggil method cleanup pada session yang telah expired | Map dibersihkan tanpa melempar exception konkurensi |
+| **3-Minute Cleanup Job** | `SessionCleanupJobTest` | Panggil method cleanup pada session yang telah expired | Map dibersihkan, memvalidasi perhitungan: hash awal, jumlah terhapus/terclear, dan hash akhir |
 | **Validasi Header 400** | `SessionRequestScopeIntegrationTest` | Panggil `/customer/profile` tanpa header atau dengan hash salah | Mengembalikan **HTTP 400 Bad Request** |
 | **Whitelist Swagger UI** | `SessionRequestScopeIntegrationTest` | Panggil `/swagger-ui/index.html` dan `/v3/api-docs` tanpa header | Mengembalikan **HTTP 200 OK** |
 | **5 Session & 10 Request** | `SessionRequestScopeIntegrationTest` | Registrasi 5 session, panggil 10 request konkuren bergantian | Data tidak tertukar, 10 `requestId` unik per request (@RequestScope) |
@@ -39,11 +39,11 @@ sequenceDiagram
 
     Note over Runner, Scope: Langkah 2: Eksekusi 10 Request Simultan
     par 10 Virtual Threads Paralel (Merotasi 5 Hash)
-        Runner->>App: GET /customer/profile [Header: x-session-hash: Hash-1]
+        Runner->>App: GET /customer/profile [Header: x-session: Hash-1]
         App->>Scope: Inisialisasi Instance RequestScope Baru (UUID-1)
         App-->>Runner: 200 OK { clientId: "CLIENT-1", requestId: "UUID-1" }
     and
-        Runner->>App: GET /customer/profile [Header: x-session-hash: Hash-2]
+        Runner->>App: GET /customer/profile [Header: x-session: Hash-2]
         App->>Scope: Inisialisasi Instance RequestScope Baru (UUID-2)
         App-->>Runner: 200 OK { clientId: "CLIENT-2", requestId: "UUID-2" }
     and
@@ -82,7 +82,7 @@ curl -i -X GET http://localhost:8080/session/a1b2c3d4...
 ### Langkah 5: Memanggil Endpoint Bisnis
 ```bash
 curl -i -X GET http://localhost:8080/customer/profile \
-  -H "x-session-hash: a1b2c3d4..."
+  -H "x-session: a1b2c3d4..."
 ```
 Perhatikan bahwa response menyertakan `requestId` dan `scopeInstanceHashCode`.
 
@@ -93,6 +93,6 @@ curl -i -X GET http://localhost:8080/customer/profile
 
 # Dengan hash acak / salah
 curl -i -X GET http://localhost:8080/customer/profile \
-  -H "x-session-hash: hash_ngawur_123"
+  -H "x-session: hash_ngawur_123"
 ```
 Pastikan status yang kembali adalah **HTTP 400 Bad Request**.

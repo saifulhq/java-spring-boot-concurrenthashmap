@@ -10,14 +10,14 @@ Proyek ini adalah backend service berbasis **Java 21**, **Spring Boot 3+**, **Ma
 
 ### Karakteristik Utama:
 - **Tahan Konkurensi Tinggi**: Menggunakan `ConcurrentHashMap` dengan operasi thread-safe untuk menangani banyak request registrasi dan pembacaan secara simultan.
-- **SHA-256 Session Key**: Payload registrasi dikonversi menjadi hash SHA-256 sebagai identitas unik session.
+- **SHA-256 Session Key Unik**: Formula hash dihitung dari `{clientId}:{agentId}:{pov}:{source};mysession;{timestamp-create};{timestamp-expired}` sehingga pemanggilan berulang dengan data yang sama tetap menghasilkan hash unik dan tidak saling menimpa.
 - **TTL Session 1 Jam**: Setiap session memiliki masa aktif 1 jam sejak dibuat.
 - **Pembersihan Otomatis Setiap 3 Menit**: Spring `@Scheduled` background job secara periodik membuang key session yang telah expired.
-- **Validasi Header `x-session-hash` Menggunakan HTTP 400 Bad Request**:
+- **Validasi Header `x-session` Menggunakan HTTP 400 Bad Request**:
   - Jika header tidak dikirim atau hash invalid/expired, API mengembalikan **HTTP 400 Bad Request**.
   - *Catatan Arsitektur*: HTTP 401 Unauthorized sengaja tidak dipakai di sini karena dicadangkan khusus untuk validasi token JWT di masa depan.
 - **Isolasi State dengan `@RequestScope`**: Setiap panggilan API bisnis (`/customer/**`) mengikat data session ke bean Spring ber-scope Request (`UserSessionContext`), menjamin data per request terisolasi secara aman.
-- **Swagger / OpenAPI 3**: Dilengkapi antarmuka Swagger UI interaktif yang dapat dibuka secara bebas tanpa memerlukan header `x-session-hash`.
+- **Swagger / OpenAPI 3**: Dilengkapi antarmuka Swagger UI interaktif yang dapat dibuka secara bebas tanpa memerlukan header `x-session`.
 - **Azure Ready**: Konfigurasi berbasis `application.properties` yang kompatibel dengan Azure Key Vault (AKV) dan Azure App Service Configuration.
 
 ---
@@ -38,7 +38,7 @@ sequenceDiagram
 
     Note over Client, Storage: 1. Registrasi Session (Bebas Header)
     Client->>Storage: POST /session/register { clientId, agentId, pov, source }
-    Note right of Storage: Hash payload dengan SHA-256<br/>Set TTL = now + 1 Jam<br/>Simpan di ConcurrentHashMap
+    Note right of Storage: Hash SHA-256 dari:<br/>payload + ;mysession;create;expire<br/>Set TTL = now + 1 Jam<br/>Simpan di ConcurrentHashMap
     Storage-->>Client: 201 Created { sessionHash, message, expiresAt }
 
     Note over Swagger, Controller: 2. Buka Dokumentasi Swagger (Bebas Header)
@@ -47,11 +47,11 @@ sequenceDiagram
     Swagger-->>Client: 200 OK (Swagger UI siap digunakan)
 
     Note over Client, Controller: 3. Panggilan API Bisnis Terproteksi
-    Client->>Interceptor: GET /customer/profile [Header: x-session-hash: <sha256>]
+    Client->>Interceptor: GET /customer/profile [Header: x-session: <sha256>]
     Interceptor->>Storage: findByHash(hash)
     alt Header kosong, hash tidak ditemukan, atau expired (> 1 Jam)
         Storage-->>Interceptor: Optional.empty()
-        Interceptor-->>Client: 400 Bad Request { "error": "Header x-session-hash missing, invalid, or expired" }
+        Interceptor-->>Client: 400 Bad Request { "error": "Header x-session missing, invalid, or expired" }
     else Hash valid & aktif
         Storage-->>Interceptor: UserSession data
         Interceptor->>Scope: Set sessionData & generate requestId
@@ -82,7 +82,9 @@ graph LR
 - **Fitur Utama**:
   - `save(String hash, UserSession session)`: Menyimpan data baru.
   - `findByHash(String hash)`: Pencarian dengan **Lazy Expiration Check**. Jika session sudah lewat dari 1 jam saat diakses, data langsung dihapus dan dianggap tidak ada (`Optional.empty()`), mengembalikan HTTP 400 ke client.
-  - `removeExpiredSessions()`: Dipanggil oleh background scheduler setiap 3 menit menggunakan `entrySet().removeIf(...)`. Operasi ini berbasis *weakly consistent iterator*, sehingga tidak pernah memicu `ConcurrentModificationException` dan tidak memblokir request lain.
+  - `removeExpiredSessions()`: Dipanggil oleh background scheduler setiap 3 menit menggunakan `entrySet().removeIf(...)`.
+    - **Logging Detail Metrik Hash**: Mencatat log `INFO` berisi: (1) Jumlah hash awal sebelum clear, (2) Jumlah data terhapus karena expired (jumlah terclear), dan (3) Jumlah hash setelah clear selesai. Contoh:
+      `[Session Cleanup] Pembersihan selesai. Jumlah hash awal: 50, Jumlah data terhapus karena expired (terclear): 12, Jumlah hash setelah clear: 38`
 
 ### 3.2 Penanganan Error Header (HTTP 400 Bad Request)
 - Exception: `InvalidSessionException`.
@@ -92,7 +94,7 @@ graph LR
   {
     "status": 400,
     "error": "BAD_REQUEST",
-    "message": "Header 'x-session-hash' is missing, invalid, or expired",
+    "message": "Header 'x-session' is missing, invalid, or expired",
     "timestamp": "2026-10-16T13:30:00Z"
   }
   ```
@@ -102,13 +104,18 @@ graph LR
 - **Lifecycle**: `@Component` + `@RequestScope` (menggunakan CGLIB proxy mode).
 - **Fungsi**: Menjamin bahwa setiap HTTP request yang masuk memiliki instance konteks tersendiri di memori. Thread worker pada Tomcat yang melayani request berbeda tidak akan pernah saling menimpa atau membocorkan data session.
 
-### 3.4 Interceptor & Whitelist Swagger (`SessionAuthInterceptor` & `WebMvcConfig`)
-Interceptor hanya memeriksa header `x-session-hash` pada endpoint bisnis. Path berikut **dikecualikan (whitelisted)**:
-- `/session/register` (Registrasi)
-- `/session/*` (Pemeriksaan status hash: `GET /session/{hash}`)
-- `/swagger-ui/**` & `/swagger-ui.html` (Antarmuka Swagger UI)
-- `/v3/api-docs/**` (OpenAPI JSON/YAML definition)
-- `/error` (Penanganan error internal Spring)
+### 3.4 Mekanisme Routing Interceptor (`WebMvcConfig`)
+Interceptor **TIDAK** berjalan untuk semua request secara membabi buta. Spring DispatcherServlet mencocokkan URL:
+- **Hanya Diintercept (`addPathPatterns`)**:
+  - `/customer/**` (Endpoint bisnis: `/customer/profile`, `/customer/review`)
+  - `/session/me` (Informasi session aktif)
+- **Dikecualikan Sepenuhnya / Whitelist (`excludePathPatterns`)**:
+  - `/session/register` (Registrasi bebas header)
+  - `/session/*` (GET `/session/{hash}`)
+  - `/swagger-ui/**` & `/swagger-ui.html` (Swagger UI bebas header)
+  - `/v3/api-docs/**` (OpenAPI JSON definition)
+  - `/error` (Penanganan error internal Spring)
+Ketika request menuju URL yang di-exclude, interceptor **di-bypass 100%** tanpa mengecek header `x-session`.
 
 ---
 
@@ -124,7 +131,7 @@ ConcurrentHashMap/
 │   │   ├── java/com/example/sessionmap/
 │   │   │   ├── ConcurrentSessionApplication.java    // Main Class & @EnableScheduling
 │   │   │   ├── config/
-│   │   │   │   ├── OpenApiConfig.java               // Konfigurasi Swagger & Header x-session-hash
+│   │   │   │   ├── OpenApiConfig.java               // Konfigurasi Swagger & Header x-session
 │   │   │   │   ├── SessionProperties.java           // @ConfigurationProperties binding
 │   │   │   │   └── WebMvcConfig.java                // Registrasi Interceptor & Path Whitelist
 │   │   │   ├── context/
@@ -223,7 +230,7 @@ class SessionRequestScopeIntegrationTest {
             executor.submit(() -> {
                 try {
                     HttpHeaders headers = new HttpHeaders();
-                    headers.set("x-session-hash", hash);
+                    headers.set("x-session", hash);
                     HttpEntity<Void> entity = new HttpEntity<>(headers);
 
                     ResponseEntity<CustomerProfileResponse> response = restTemplate.exchange(
@@ -256,3 +263,29 @@ class SessionRequestScopeIntegrationTest {
     }
 }
 ```
+
+---
+
+## 6. Konfigurasi `application.properties`
+
+```properties
+# Server
+server.port=8080
+
+# Application
+spring.application.name=concurrent-session-service
+
+# Session Configuration
+# TTL session: 1 jam
+session.ttl-duration=1h
+# Interval pembersihan berkala: 3 menit (180.000 ms)
+session.cleanup-interval-ms=180000
+# Salt/Identifier key session (dapat di-override via Azure Key Vault / App Settings: SESSION_SALT)
+session.salt=mysession
+
+# SpringDoc OpenAPI / Swagger Configuration
+springdoc.api-docs.path=/v3/api-docs
+springdoc.swagger-ui.path=/swagger-ui.html
+springdoc.swagger-ui.operationsSorter=method
+```
+

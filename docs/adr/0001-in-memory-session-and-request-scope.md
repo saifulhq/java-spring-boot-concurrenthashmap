@@ -21,13 +21,18 @@ dari payload `{ clientId, agentId, pov, source }`, dan menjamin setiap request b
   - Tidak ada overhead jaringan atau ketergantungan database eksternal.
   - Iterasi melalui `entrySet().removeIf(...)` bersifat *weakly consistent*, aman dijalankan bersamaan dengan operasi penambahan session.
 
-### 2.2 Penggunaan SHA-256 sebagai Session Key
-- **Keputusan**: Hash SHA-2 dikalkulasikan dari representasi string kanonikal payload registrasi.
+### 2.2 Penggunaan SHA-256 sebagai Session Key & Pencegahan Duplikasi
+- **Keputusan**: Hash SHA-2 (SHA-256) dikalkulasikan dari kombinasi payload registrasi ditambah salt dinamis berformat:
+  `{clientId}:{agentId}:{pov}:{source};{salt};{timestamp-create};{timestamp-expired}`
+  di mana `{salt}` secara default bernilai `mysession` dan dapat dikonfigurasi secara dinamis melalui properti `session.salt` di `application.properties` (atau di-override via Azure Key Vault `SESSION_SALT`).
 - **Alasan**:
-  - Menghasilkan string hex 64-karakter dengan entropi seragam, cocok sebagai key hash map dengan distribusi bucket yang merata.
+  - Menghasilkan string hex 64-karakter dengan entropi seragam sebagai key pada `ConcurrentHashMap`.
+  - Jika seorang user melakukan registrasi ulang dengan data payload yang sama berulang kali, nilai `{timestamp-create}` (epoch millis saat request masuk) dan `{timestamp-expired}` (epoch millis masa berlaku) akan selalu berbeda.
+  - Memungkinkan penyesuaian penanda session (salt) lintas environment (Dev, Staging, Prod) melalui konfigurasi eksternal tanpa perlu mengubah kode sumber.
+  - Hal ini menjamin setiap pemanggilan `POST /session/register` **selalu menghasilkan key hash yang unik** dan tidak menimpa session aktif sebelumnya.
 
-### 2.3 Status Error HTTP 400 Bad Request untuk `x-session-hash`
-- **Keputusan**: Jika header `x-session-hash` tidak dikirim, formatnya salah, atau hash tidak ditemukan/expired di memori, kembalikan **HTTP 400 Bad Request**.
+### 2.3 Status Error HTTP 400 Bad Request untuk `x-session`
+- **Keputusan**: Jika header `x-session` tidak dikirim, formatnya salah, atau hash tidak ditemukan/expired di memori, kembalikan **HTTP 400 Bad Request**.
 - **Alasan**:
   - HTTP 401 Unauthorized secara tegas dicadangkan untuk validasi token otentikasi JWT yang akan diimplementasikan di fase berikutnya. Penggunaan 400 membedakan dengan jelas antara *malformed/missing session context* dengan *unauthorized user identity*.
 

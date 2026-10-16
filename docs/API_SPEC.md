@@ -6,7 +6,7 @@ Dokumen ini mendefinisikan seluruh kontrak REST API, header, skema request/respo
 
 ## Ringkasan Endpoint
 
-| Method | Endpoint | Wajib Header `x-session-hash` | Deskripsi |
+| Method | Endpoint | Wajib Header `x-session` | Deskripsi |
 |---|---|---|---|
 | `POST` | `/session/register` | **Tidak** | Mendaftarkan session baru & menghasilkan SHA-256 hash |
 | `GET` | `/session/{hash}` | **Tidak** | Inspeksi data session berdasarkan hash key |
@@ -89,7 +89,7 @@ Mengambil profil pelanggan menggunakan konteks `@RequestScope`.
 
 ### Request Header
 ```
-x-session-hash: <sha256-hash>
+x-session: <sha256-hash>
 ```
 
 ### Response (200 OK)
@@ -113,7 +113,7 @@ Mengambil ulasan pelanggan menggunakan konteks `@RequestScope`.
 
 ### Request Header
 ```
-x-session-hash: <sha256-hash>
+x-session: <sha256-hash>
 ```
 
 ### Response (200 OK)
@@ -132,13 +132,13 @@ x-session-hash: <sha256-hash>
 ---
 
 ## 5. Format Error Standar (400 Bad Request)
-Jika header `x-session-hash` tidak dikirim atau hash sudah kadaluwarsa pada endpoint terproteksi:
+Jika header `x-session` tidak dikirim atau hash sudah kadaluwarsa pada endpoint terproteksi:
 
 ```json
 {
   "status": 400,
   "error": "BAD_REQUEST",
-  "message": "Header 'x-session-hash' is missing, invalid, or expired",
+  "message": "Header 'x-session' is missing, invalid, or expired",
   "timestamp": "2026-10-16T13:35:00Z"
 }
 ```
